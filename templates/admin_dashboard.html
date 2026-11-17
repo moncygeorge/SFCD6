@@ -1,0 +1,94 @@
+<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>SFCD</title><style>body{font-family:Arial,sans-serif;margin:0;background:#f4f6f8;color:#243447}header{background:#17324d;color:#fff;padding:18px}header a{color:#fff;margin-right:14px}.wrap{max-width:900px;margin:24px auto;padding:0 16px}.card{background:#fff;border-radius:12px;padding:20px;margin:16px 0;box-shadow:0 2px 10px #0001}input,textarea,select{width:100%;box-sizing:border-box;padding:10px;margin:6px 0 12px;border:1px solid #ccd3da;border-radius:7px}button,.btn{display:inline-block;background:#17324d;color:#fff;border:0;border-radius:7px;padding:10px 15px;text-decoration:none;cursor:pointer}.danger{background:#a33}.muted{color:#667}.flash{padding:10px;background:#fff4cc;border-radius:7px;margin:8px 0}img{max-width:100%;border-radius:8px}table{width:100%;border-collapse:collapse}th,td{padding:10px;border-bottom:1px solid #ddd;text-align:left}code{overflow-wrap:anywhere}</style></head><body><header><strong>Sharon Fellowship Church Dallas</strong> &nbsp; <a href="/announcements">Announcements</a><a href="/events">Events</a><a href="/gallery">Gallery</a></header><div class="wrap"><div class="hero"><div><small>SFCD 6 • Administration</small><h1>Church Management</h1><p>Manage elections, nominations, members and events in one place.</p></div><nav class="nav"><a href="#elections">Elections</a><a href="#voters">Voters & Resets</a><a href="#rsvp">RSVP</a><a href="#content">Church Content</a></nav></div>{% with messages=get_flashed_messages(with_categories=true) %}{% for cat,msg in messages %}<div class="flash">{{ msg }}</div>{% endfor %}{% endwith %}<p><a class="btn" href="/admin_logout">Logout</a> <a class="btn" href="/admin/announcements">Announcements</a> <a class="btn" href="/admin/events">Events</a> <a class="btn" href="/admin/gallery">Gallery</a></p><details class="card" id="rsvp"><summary><strong>RSVP Management</strong><span> Create events and view responses</span></summary><div class="inside"><h2>Generate RSVP Link</h2><form method="post" action="/admin/rsvp/create"><input name="title" placeholder="Event title" required><input type="date" name="event_date" required><input type="time" name="event_time" required><button>Generate RSVP Link</button></form></div></details><details class="card"><summary><strong>RSVP Events</strong><span> Browse generated links</span></summary><div class="inside"><h2>RSVP Events</h2>{% for e in events %}<p><strong>{{ e.title }}</strong> — {{ e.event_date }} {{ e.event_time }}<br><code>{{ request.host_url.rstrip('/') }}/rsvp/{{ e.id }}</code><br><a class="btn" href="/rsvp/{{ e.id }}" target="_blank">Open</a> <a class="btn" href="/admin/rsvp/{{ e.id }}">View Responses</a> <span class="muted">Yes {{ e.yes_count or 0 }} / No {{ e.no_count or 0 }}</span></p>{% else %}<p>No RSVP events yet.</p>{% endfor %}</div></details><section class="card" id="elections">
+<h2>Election Management</h2>
+<p class="muted">One voter link for the entire voting session:</p>
+<p><code>{{ request.host_url.rstrip('/') }}/election</code></p>
+<p>Registered voters: <strong>{{ registered_voter_count }}</strong></p>
+{% if not election_sessions %}
+<form method="post" action="/admin/election/create">
+<input name="title" placeholder="Election title (example: Church Election 2026)" required>
+<button>Create Voting Session</button>
+</form>
+{% endif %}
+</section>
+
+{% for e in election_sessions %}
+<details class="card" open><summary><strong>{{ e.title }}</strong><span> Session controls, nominations & voting phases</span></summary><div class="inside">
+<div class="section-heading"><div><h2>{{ e.title }}</h2><p class="muted">Voting Session</p></div>
+<span class="status {{ 'status-open' if e.status == 'open' else 'status-closed' }}">{{ e.status|upper }}</span></div>
+<p><strong>Election mode:</strong> <span class="status {{ 'status-open' if e.mode == 'live' else 'status-closed' }}">{{ e.mode|upper }}</span> {% if e.mode == 'live' %}<strong>Real election — resets permanently locked</strong>{% else %}Test election — votes may be cleared only while everything is closed{% endif %}</p>
+{% if e.mode == 'test' %}<details class="reset-panel"><summary><strong>Activate LIVE election</strong> — irreversible</summary><p>First close the session and all phases, then clear all test votes and nominations. Once LIVE, resets and phase deletion are permanently blocked, including after voting closes.</p><form method="post" action="/admin/election/{{ e.id }}/go-live" onsubmit="return confirm('Activate LIVE mode permanently? All resets will be disabled.')"><label>Type GO LIVE<input name="confirmation" required autocomplete="off"></label><button class="danger">Activate LIVE Mode</button></form></details>{% endif %}
+<form method="post" action="/admin/election/{{ e.id }}/toggle">
+<button class="{{ 'danger' if e.status == 'open' else '' }}">{{ 'Close Entire Session' if e.status == 'open' else 'Open Voting Session' }}</button>
+</form>
+<hr>
+<h3>Ministerial Positions</h3>
+{% set mr=ministerial_rounds.get(e.id) %}
+<p>Status: <strong>{{ mr.status|upper if mr else 'NOT STARTED' }}</strong></p>
+<form method="post" action="/admin/election/{{ e.id }}/ministerial/toggle"><button>{{ 'Close Ministerial Nominations' if mr and mr.status=='open' else 'Open Ministerial Nominations' }}</button></form>
+{% if mr %}<p><a class="btn secondary" href="/admin/election/{{ e.id }}/ministerial/results">Ministerial Nomination Tally</a></p>{% endif %}
+<hr><h3>Add Voting Phase</h3>
+<form method="post" action="/admin/election/{{ e.id }}/phase/create">
+<input name="position" placeholder="Position (example: Secretary)" required>
+<textarea name="candidates" placeholder="One candidate per line" required></textarea>
+<button>Add Phase</button>
+</form>
+<h3>Voting Phases</h3>
+<div class="phase-list">
+{% for p in election_phases if p.session_id == e.id %}
+<div class="phase-row">
+<div class="phase-info"><strong>{{ p.position }}</strong>
+<span class="status {{ 'status-open' if p.status == 'open' else 'status-closed' }}">{{ p.status|upper }}</span>
+<span class="muted">Votes: {{ p.vote_count or 0 }}</span></div>
+<div class="phase-actions">
+<form method="post" action="/admin/election/phase/{{ p.id }}/toggle">
+  <button>{{ 'Close Phase' if p.status == 'open' else 'Open Phase' }}</button>
+</form>
+<a class="btn secondary" href="/admin/election/phase/{{ p.id }}/results">Results</a>
+{% if p.status != 'open' %}
+<form method="post" action="/admin/election/phase/{{ p.id }}/delete"
+      onsubmit="return confirm('Delete {{ p.position|e }}? This permanently deletes this phase, its candidates, vote count, ballots, and voter participation records. This cannot be undone.');">
+  <button class="delete-phase" type="submit">Delete Phase</button>
+</form>
+{% endif %}
+</div></div>
+{% else %}<p class="muted">No voting phases have been created yet.</p>{% endfor %}
+</div></div></details>
+{% endfor %}
+
+<section class="card" id="voters">
+<h2>Voter Management</h2>
+<p>Registered voters: <strong>{{ registered_voter_count }}</strong></p>
+<h3>Add Voters</h3>
+<form method="post" action="/enter_voters">
+<textarea name="phone_numbers" placeholder="Enter one phone number per line" required></textarea>
+<button>Add Voters</button>
+</form>
+<p><a class="btn secondary" href="/view_usernames">View Voters</a></p>
+<details class="reset-panel"><summary><strong>Reset one phone number</strong> — remove eligible test nomination records</summary>
+<p class="muted">For privacy, individual anonymous ballots cannot be identified and removed. This reset will be blocked when the voter has participated in a phase containing ballots. Close the election first.</p>
+<form method="post" action="/admin/sfcd6/reset-voter"><label>Election<select name="election_id" required>{% for e in election_sessions if e.mode == "test" %}<option value="{{e.id}}">{{e.title}} (TEST)</option>{% endfor %}</select></label><label>Registered phone number<input name="phone" type="tel" placeholder="10-digit US number" required></label><button>Reset This Voter</button></form></details>
+<details class="reset-panel"><summary><strong>Reset entire test election</strong> — prepare for real voting</summary>
+<p class="muted"><strong>Destructive:</strong> clears ALL anonymous ballots, phase participation and ministerial nominations for one election, but keeps registered voters, phases and candidates. Back up your SQLite database first. Close the session, phases and nominations.</p>
+<form method="post" action="/admin/sfcd6/reset-test-election" onsubmit="return confirm('Permanently delete ALL test votes and nominations for this election? Verify your database backup first.')"><label>Election<select name="election_id" required>{% for e in election_sessions if e.mode == "test" %}<option value="{{e.id}}">{{e.title}} (TEST)</option>{% endfor %}</select></label><label>Type RESET TEST VOTES<input name="confirmation" autocomplete="off" required></label><button class="danger">Clear All Test Votes</button></form></details>
+</section>
+
+<section class="card" id="content">
+<h2>Church Content</h2>
+<div class="button-row">
+<a class="btn secondary" href="/admin/announcements">Announcements</a>
+<a class="btn secondary" href="/admin/events">Events</a>
+<a class="btn secondary" href="/admin/gallery">Gallery</a>
+</div></section>
+
+<style>
+.section-heading{display:flex;justify-content:space-between;align-items:flex-start;gap:12px}
+.status{display:inline-block;padding:5px 9px;border-radius:999px;font-size:12px;font-weight:700}
+.status-open{background:#dff3e4;color:#176b32}.status-closed{background:#eceff2;color:#59636e}
+.phase-list{display:grid;gap:12px}.phase-row{border:1px solid #e0e4e8;border-radius:10px;padding:14px;display:flex;justify-content:space-between;align-items:center;gap:16px}
+.phase-info,.phase-actions,.button-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}.phase-actions form{margin:0}
+.secondary{background:#eef2f5!important;color:#17324d!important}.danger{background:#9b2c2c!important}.delete-phase{background:#fff!important;color:#9b2c2c!important;border:1px solid #9b2c2c!important}
+@media(max-width:650px){.phase-row{align-items:stretch;flex-direction:column}.phase-actions{align-items:stretch}}
+.wrap{max-width:1120px}.hero{background:#17324d;color:white;border-radius:18px;padding:26px;margin:20px 0}.hero h1{margin:8px 0}.hero p{color:#c9d7e3}.nav{display:flex;flex-wrap:wrap;gap:8px;margin-top:18px}.nav a{color:white;text-decoration:none;background:#ffffff25;padding:10px 14px;border-radius:9px}.card{scroll-margin-top:20px}.card summary{cursor:pointer;display:flex;justify-content:space-between;align-items:center;gap:12px;font-size:19px}.card summary span{font-size:13px;color:#667;font-weight:400}.inside{padding-top:18px}.reset-panel{margin:16px 0;padding:18px;background:#f6f8fa;border:1px solid #dce3eb;border-radius:10px}.reset-panel summary{cursor:pointer}.reset-panel form{margin-top:16px}label{display:block;font-weight:600}button:hover,.btn:hover{filter:brightness(1.12)}button:focus-visible,a:focus-visible,summary:focus-visible{outline:3px solid #589ad4;outline-offset:3px}@media(max-width:650px){.card summary{display:block}.card summary span{display:block;margin-top:4px}.hero{padding:18px}}
+</style>
+
+</body></html>
